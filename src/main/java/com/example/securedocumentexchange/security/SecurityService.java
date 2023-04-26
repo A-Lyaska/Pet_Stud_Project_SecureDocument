@@ -189,8 +189,8 @@ public class SecurityService {
 
         // Записываем расшифрованные данные в файл
         File decryptedFile = new File(document.getParentFile(), filename);
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(decryptedFile))) {
-            writer.write(Arrays.toString(dataDec));
+        try (FileOutputStream outputStream = new FileOutputStream(decryptedFile)) {
+            outputStream.write(dataDec);
         }
     }
 
