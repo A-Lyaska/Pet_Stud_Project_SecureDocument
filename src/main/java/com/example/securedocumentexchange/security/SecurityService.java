@@ -145,22 +145,33 @@ public class SecurityService {
     }
 
     public void decryptDocument(File document, File privateKeyFile) throws IOException, GeneralSecurityException, InvalidPassphraseException {
+
+        // Получаем имя файла
+        String filename = document.getName();
+        // Создаем имя зашифрованного файла
+        String decryptedFilename = filename + ".sde";
+        // Создаем файл зашифрованного документа в той же директории, где и оригинальный документ
+        File decryptedFile = new File(document.getParent(), decryptedFilename);
+
+        // Получаем данные из зашифрованного файла
+        byte[] encodedBytes;
+
+        try (FileInputStream inputStream = new FileInputStream(document)) {
+            int fileSize = (int) document.length();
+            encodedBytes = new byte[fileSize];
+            inputStream.read(encodedBytes);
+        }
+
+        byte[] iv = Arrays.copyOfRange(encodedBytes, 0, 16);
+
+        byte[] aesKeyEnc = Arrays.copyOfRange(encodedBytes, 16, 512+16);
+
+        byte[] dataEnc = Arrays.copyOfRange(encodedBytes, 512+16, encodedBytes.length);
+
         // Проверяем, что файл с зашифрованным документом существует и является файлом
         if (!document.exists() || !document.isFile()) {
             throw new IOException("Invalid input file");
         }
-
-        // Получаем зашифрованный файл и его расширение
-        String encryptedFilename = document.getName();
-        String extension = ".sde";
-
-        // Проверяем, что файл имеет верное расширение
-        if (!encryptedFilename.endsWith(extension)) {
-            throw new IOException("Invalid input file extension");
-        }
-
-        // Получаем расширение файла с документом
-        String filename = encryptedFilename.substring(0, encryptedFilename.length() - extension.length());
 
         // Проверяем, что файл закрытого ключа существует и является файлом
         if (!privateKeyFile.exists() || !privateKeyFile.isFile()) {
@@ -170,27 +181,21 @@ public class SecurityService {
         // Получаем закрытый ключ
         privateKey = SshKeyUtils.getPrivateKey(privateKeyFile, "").getPrivateKey().getJCEPrivateKey();
 
-        // Получаем данные из зашифрованного файла
-        byte[] encryptedData = Files.readAllBytes(document.toPath());
-
         // Расшифровываем симметричный ключ с помощью закрытого ключа
-        byte[] aesKeyEnc = Arrays.copyOfRange(encryptedData, 16, 512);
         Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWITHSHA-256ANDMGF1PADDING");
         cipher.init(Cipher.DECRYPT_MODE, privateKey);
         byte[] aesKeyDec = cipher.doFinal(aesKeyEnc);
 
         // Расшифровываем данные с помощью симметричного ключа
-        byte[] iv = Arrays.copyOfRange(encryptedData, 0, 16);
-        byte[] dataEnc = Arrays.copyOfRange(encryptedData, 512+16, encryptedData.length);
         Key aesKey = new SecretKeySpec(aesKeyDec, "AES");
         cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.DECRYPT_MODE, aesKey, new GCMParameterSpec(128, iv));
         byte[] dataDec = cipher.doFinal(dataEnc);
+        String data = new String(dataDec, "UTF-8");
 
         // Записываем расшифрованные данные в файл
-        File decryptedFile = new File(document.getParentFile(), filename);
-        try (FileOutputStream outputStream = new FileOutputStream(decryptedFile)) {
-            outputStream.write(dataDec);
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(decryptedFile))) {
+            writer.write(data);
         }
     }
 
