@@ -9,10 +9,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.security.*;
 import java.util.Arrays;
@@ -192,7 +189,9 @@ public class SecurityService {
 
         // Записываем расшифрованные данные в файл
         File decryptedFile = new File(document.getParentFile(), filename);
-        Files.write(decryptedFile.toPath(), dataDec);
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(decryptedFile))) {
+            writer.write(Arrays.toString(dataDec));
+        }
     }
 
     public void signDocument(File document, File privateKey) throws IOException, GeneralSecurityException, InvalidPassphraseException {
