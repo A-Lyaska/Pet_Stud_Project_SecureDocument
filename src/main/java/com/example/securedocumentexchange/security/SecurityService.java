@@ -225,11 +225,60 @@ public class SecurityService {
         }
     }
 
-    public void signDocument(File document, File privateKey) throws IOException, GeneralSecurityException, InvalidPassphraseException {
+    public void signDocument(File document, File privateKeyFile) throws IOException, GeneralSecurityException, InvalidPassphraseException {
+        // Проверяем, что файл документа существует и является файлом
+        if (!document.exists() || !document.isFile()) {
+            throw new IOException("Invalid input file");
+        }
 
+        // Получаем закрытый ключ
+        privateKey = SshKeyUtils.getPrivateKey(privateKeyFile, "").getPrivateKey().getJCEPrivateKey();
+
+        // Получаем данные из файла документа
+        byte[] data = Files.readAllBytes(document.toPath());
+
+        // Создаем объект для подписи данных
+        Signature signature = Signature.getInstance("SHA256withRSA");
+        signature.initSign(privateKey);
+        signature.update(data);
+
+        // Получаем цифровую подпись
+        byte[] signatureBytes = signature.sign();
+
+        // Создаем файл цифровой подписи с тем же названием, но с расширением ".sig"
+        String signatureFileName = document.getName() + ".sig";
+        File signatureFile = new File(document.getParentFile(), signatureFileName);
+
+        // Записываем цифровую подпись в файл
+        try (FileOutputStream fos = new FileOutputStream(signatureFile)) {
+            fos.write(signatureBytes);
+        }
     }
 
-    public boolean verifyDocument(File document, File signFile, File publicKey) throws IOException, GeneralSecurityException {
-        return false;
+    public boolean verifyDocument(File document, File signFile, File publicKeyFile) throws IOException, GeneralSecurityException {
+        // Проверяем, что файл документа и файл подписи существуют и являются файлами
+        if (!document.exists() || !document.isFile() || !signFile.exists() || !signFile.isFile()) {
+            throw new IOException("Invalid input files");
+        }
+
+        // Получаем открытый ключ из файла
+        SshPublicKey sshPublicKey = SshKeyUtils.getPublicKey(publicKeyFile);
+        publicKey = sshPublicKey.getJCEPublicKey();
+
+        // Получаем данные из документа
+        byte[] data = Files.readAllBytes(document.toPath());
+
+        // Получаем подпись из файла
+        byte[] signatureBytes = Files.readAllBytes(signFile.toPath());
+
+        // Создаем объект для верификации подписи и инициализируем его открытым ключом
+        Signature signature = Signature.getInstance("SHA256withRSA");
+        signature.initVerify(publicKey);
+
+        // Добавляем данные для проверки подписи
+        signature.update(data);
+
+        // Проверяем подпись
+        return signature.verify(signatureBytes);
     }
 }
