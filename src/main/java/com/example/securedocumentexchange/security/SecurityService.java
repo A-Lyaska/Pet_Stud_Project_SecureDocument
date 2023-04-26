@@ -123,24 +123,50 @@ public class SecurityService {
         // Создаем файл зашифрованного документа в той же директории, где и оригинальный документ
         File encryptedFile = new File(document.getParent(), encryptedFilename);
 
+        // Получаем данные из файла
+        StringBuilder stringBuilder = new StringBuilder();
+        String line;
+
+        try (BufferedReader bufferedReader = new BufferedReader(new FileReader(document))) {
+            while ((line = bufferedReader.readLine()) != null) {
+                stringBuilder.append(line).append("\n");
+            }
+        }
+
+        String data = stringBuilder.toString();
+
         // Получаем открытый ключ из файла
         SshPublicKey sshPublicKey = SshKeyUtils.getPublicKey(publicKeyFile);
         publicKey = sshPublicKey.getJCEPublicKey();
 
-        // Инициализируем шифрование с помощью алгоритма RSA/ECB/OAEPWITHSHA-256ANDMGF1PADDING
-        Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWITHSHA-256ANDMGF1PADDING");
+        // Инициализируем шифрование с помощью алгоритмов
+        Key aesKey = generateAes(128);
+
+        IvParameterSpec iv = generateIv(aesKey.getEncoded().length);
+
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+
+        cipher.init(Cipher.ENCRYPT_MODE, aesKey, new GCMParameterSpec(128, iv.getIV()));
+
+        byte[] encryptedBytes = cipher.doFinal(data.getBytes());
+
+        cipher = Cipher.getInstance("RSA/ECB/OAEPWITHSHA-256ANDMGF1PADDING");
+
         cipher.init(Cipher.ENCRYPT_MODE, publicKey);
 
-        // Читаем файл и шифруем его содержимое порциями по 1024 байта
-        try (FileInputStream in = new FileInputStream(document); FileOutputStream out = new FileOutputStream(encryptedFile)) {
-            byte[] buf = new byte[1024];
-            int bytesRead;
-            while ((bytesRead = in.read(buf)) != -1) {
-                // Шифруем текущую порцию данных
-                byte[] cipherData = cipher.doFinal(buf, 0, bytesRead);
-                // Записываем зашифрованную порцию в файл
-                out.write(cipherData);
-            }
+        byte[] encryptedAesKey = cipher.doFinal(aesKey.getEncoded());
+
+        byte[] outputDataWithKey = new byte[encryptedBytes.length + encryptedAesKey.length + iv.getIV().length];
+
+        System.arraycopy(iv.getIV(), 0, outputDataWithKey,0, iv.getIV().length);
+
+        System.arraycopy(encryptedAesKey, 0, outputDataWithKey, iv.getIV().length, encryptedAesKey.length);
+
+        System.arraycopy(encryptedBytes, 0, outputDataWithKey, iv.getIV().length + encryptedAesKey.length, encryptedBytes.length);
+
+        try (FileOutputStream outputStream = new FileOutputStream(encryptedFile)) {
+            outputStream.write(outputDataWithKey);
+            outputStream.flush();
         }
     }
 
@@ -149,7 +175,7 @@ public class SecurityService {
         // Получаем имя файла
         String filename = document.getName();
         // Создаем имя зашифрованного файла
-        String decryptedFilename = filename + ".sde";
+        String decryptedFilename = filename + ".txt";
         // Создаем файл зашифрованного документа в той же директории, где и оригинальный документ
         File decryptedFile = new File(document.getParent(), decryptedFilename);
 
